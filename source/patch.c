@@ -89,8 +89,71 @@ void _ZN14GameState_Quit21MenuManagerLoadedMenuEi(int p1) {
 
 extern volatile int doMorrowind;
 
+// Set when the main menu has finished loading. Used to end the fake loading
+// screen after the "quit to menu" relaunch as soon as the menu is ready,
+// instead of always waiting a fixed 20 seconds.
+volatile int mainMenuReady = 0;
+
+static void dbg_log(const char * fmt, ...);
+static int no_relaunch(void);
+
+so_hook MainMenuState_MenuManagerLoadedMenu_hook;
+void MainMenuState_MenuManagerLoadedMenu(void * this, int menu) {
+    mainMenuReady = 1;
+    dbg_log("MainMenuState::MenuManagerLoadedMenu(%d)", menu);
+    SO_CONTINUE(void *, MainMenuState_MenuManagerLoadedMenu_hook, this, menu);
+}
+
+/*
+ * Quitting to the main menu runs the game's real StateMachine::Clear (tested
+ * on hardware: works, ~4s instead of a ~25s app relaunch). Creating the file
+ * DATA_PATH "use_relaunch" restores the original relaunch workaround.
+ * With DATA_PATH "debug_log" present, progress goes to "relaunch_debug.log".
+ */
+#include <psp2/io/fcntl.h>
+#include <stdio.h>
+#include <stdarg.h>
+
+static int file_flag(const char * path) {
+    SceUID fd = sceIoOpen(path, SCE_O_RDONLY, 0);
+    if (fd < 0) return 0;
+    sceIoClose(fd);
+    return 1;
+}
+
+static void dbg_log(const char * fmt, ...) {
+    static int enabled = -1;
+    if (enabled < 0) enabled = file_flag(DATA_PATH "debug_log");
+    if (!enabled) return;
+    char line[256];
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(line, sizeof(line) - 1, fmt, args);
+    va_end(args);
+    if (n < 0) return;
+    if (n > (int)sizeof(line) - 2) n = sizeof(line) - 2;
+    line[n++] = '\n';
+    SceUID fd = sceIoOpen(DATA_PATH "relaunch_debug.log", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
+    if (fd >= 0) { sceIoWrite(fd, line, n); sceIoClose(fd); }
+}
+
+static int no_relaunch(void) {
+    static int v = -1;
+    if (v < 0)
+        v = !file_flag(DATA_PATH "use_relaunch");
+    return v;
+}
+
 so_hook StateMachineClear_hook;
 void StateMachineClear(void * this) {
+    if (menuQuitButtonPressed && no_relaunch()) {
+        dbg_log("Clear(%p): start (real Clear, no relaunch)", this);
+        menuQuitButtonPressed = 0;
+        SO_CONTINUE(void *, StateMachineClear_hook, this);
+        dbg_log("Clear(%p): returned OK", this);
+        return;
+    }
+
     if (menuQuitButtonPressed == 0) {
         sceClibPrintf("StateMachineClear: Business as usual.\n");
         SO_CONTINUE(void *, StateMachineClear_hook, this);
@@ -130,6 +193,7 @@ void so_patch(void) {
 
 
     hook_addr((uintptr_t)so_symbol(&so_mod, "_ZN13BGAppDelegate16getFreeDiskSpaceEv"), (uintptr_t)&BGAppDelegate__getFreeDiskSpace);
+    MainMenuState_MenuManagerLoadedMenu_hook = hook_addr((uintptr_t)so_symbol(&so_mod, "_ZN13MainMenuState21MenuManagerLoadedMenuEi"), (uintptr_t)&MainMenuState_MenuManagerLoadedMenu);
     StateMachineClear_hook = hook_addr((uintptr_t)so_symbol(&so_mod, "_ZN12StateMachine5ClearEv"), (uintptr_t)&StateMachineClear);
 
 

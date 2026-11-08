@@ -124,6 +124,12 @@ int fflush_soloader(FILE *stream);
 
 int fgetc_soloader(FILE *stream);
 
+int ungetc_soloader(int c, FILE *stream);
+
+char * fgets_soloader(char *str, int num, FILE *stream);
+
+void psarc_stats_tick(void);
+
 #ifdef __cplusplus
 };
 #endif

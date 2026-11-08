@@ -17,6 +17,7 @@
 #include <utils/utils.h>
 
 #include "reimpl/controls.h"
+#include "reimpl/io.h"
 #include "utils/logger.h"
 
 int _newlib_heap_size_user = 256 * 1024 * 1024;
@@ -50,6 +51,20 @@ void * game_thread();
 
 volatile int doMorrowind = 0;
 volatile int doingMorrowind = 0;
+extern volatile int mainMenuReady;
+
+// After the relaunch, keep the fake loading screen until the main menu is
+// loaded (plus a few frames to let it draw), capped at 20 seconds.
+static int fakeLoadingActive(uint32_t startedAt) {
+    static int framesAfterReady = 0;
+    if (!doingMorrowind)
+        return 0;
+    if (sceKernelGetProcessTimeLow() - startedAt >= 20000000)
+        return 0;
+    if (mainMenuReady && ++framesAfterReady > 10)
+        return 0;
+    return 1;
+}
 
 int main(int argc, char * argv[]) {
     soloader_init_all();
@@ -147,14 +162,16 @@ void * game_thread() {
 
     void (* nativeOnDrawFrame)() = (void *)so_symbol(&so_mod, "Java_com_eamobile_nbajam_NBAJamActivity_nativeOnDrawFrame");
     while (1) {
-        if (doingMorrowind && sceKernelGetProcessTimeLow() - startedAt < 20000000) {
+        int fake = fakeLoadingActive(startedAt);
+        if (fake) {
             drawFakeLoadingScreen();
             gl_swap();
         }
 
         nativeOnDrawFrame();
+        psarc_stats_tick();
 
-        if (doingMorrowind && sceKernelGetProcessTimeLow() - startedAt < 20000000) {
+        if (fake) {
             continue;
         }
 

@@ -139,6 +139,23 @@ JNIEnv * _ZN2EA6Nimble6getEnvEv() {
     return &jni;
 }
 
+// Imports used by libnbajam.so that were missing from the table.
+// The *_l variants ignore the locale (the game only uses the C locale).
+static long long strtoll_l_soloader(const char *s, char **e, int b, void *loc) { (void)loc; return strtoll(s, e, b); }
+static unsigned long long strtoull_l_soloader(const char *s, char **e, int b, void *loc) { (void)loc; return strtoull(s, e, b); }
+static long double strtold_l_soloader(const char *s, char **e, void *loc) { (void)loc; return strtold(s, e); }
+static int posix_memalign_soloader(void **memptr, size_t alignment, size_t size) {
+    // newlib declares posix_memalign but does not implement it
+    if (alignment < sizeof(void *) || (alignment & (alignment - 1)) != 0)
+        return EINVAL;
+    void *p = memalign(alignment, size ? size : 1);
+    if (!p)
+        return ENOMEM;
+    *memptr = p;
+    return 0;
+}
+static int readlink_soloader(const char *path, char *buf, size_t sz) { (void)path; (void)buf; (void)sz; errno = EINVAL; return -1; }
+
 so_default_dynlib default_dynlib[] = {
         { "_ZN2EA6Nimble9findClassEPKc", (uintptr_t)&_ZN2EA6Nimble9findClassEPKc },
         { "_ZN2EA6Nimble6getEnvEv", (uintptr_t)&_ZN2EA6Nimble6getEnvEv },
@@ -302,6 +319,7 @@ so_default_dynlib default_dynlib[] = {
         { "log10", (uintptr_t)&log10 },
         { "log10f", (uintptr_t)&log10f },
         { "logf", (uintptr_t)&logf },
+        { "log2f", (uintptr_t)&log2f },
         { "lrint", (uintptr_t)&lrint },
         { "lrintf", (uintptr_t)&lrintf },
         { "lround", (uintptr_t)&lround },
@@ -367,6 +385,7 @@ so_default_dynlib default_dynlib[] = {
         { "free", (uintptr_t)&free },
         { "malloc", (uintptr_t)&malloc },
         { "memalign", (uintptr_t)&memalign },
+        { "posix_memalign", (uintptr_t)&posix_memalign_soloader },
         { "memcmp", (uintptr_t)&memcmp },
         { "memcpy", (uintptr_t)&sceClibMemcpy },
         { "memmem", (uintptr_t)&memmem },
@@ -403,11 +422,13 @@ so_default_dynlib default_dynlib[] = {
         { "ferror", (uintptr_t)&ferror_soloader },
         { "fflush", (uintptr_t)&fflush_soloader },
         { "fgetc", (uintptr_t)&fgetc_soloader },
+        { "getc", (uintptr_t)&fgetc_soloader },
+        { "fgets", (uintptr_t)&fgets_soloader },
+        { "ungetc", (uintptr_t)&ungetc_soloader },
 
         #ifdef USE_SCELIBC_IO
             { "fdopen", (uintptr_t)&sceLibcBridge_fdopen },
             { "fgetpos", (uintptr_t)&sceLibcBridge_fgetpos },
-            { "fgets", (uintptr_t)&sceLibcBridge_fgets },
             { "fileno", (uintptr_t)&sceLibcBridge_fileno },
             { "fputc", (uintptr_t)&sceLibcBridge_fputc },
             { "fputs", (uintptr_t)&sceLibcBridge_fputs },
@@ -415,19 +436,16 @@ so_default_dynlib default_dynlib[] = {
             { "fsetpos", (uintptr_t)&sceLibcBridge_fsetpos },
             { "fwide", (uintptr_t)&sceLibcBridge_fwide },
             { "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
-            { "getc", (uintptr_t)&sceLibcBridge_getc },
             { "getwc", (uintptr_t)&sceLibcBridge_getwc },
             { "putc", (uintptr_t)&sceLibcBridge_putc },
             { "putchar", (uintptr_t)&sceLibcBridge_putchar },
             { "puts", (uintptr_t)&sceLibcBridge_puts },
             { "putwc", (uintptr_t)&sceLibcBridge_putwc },
             { "setvbuf", (uintptr_t)&sceLibcBridge_setvbuf },
-            { "ungetc", (uintptr_t)&sceLibcBridge_ungetc },
             { "ungetwc", (uintptr_t)&sceLibcBridge_ungetwc },
         #else
             { "fdopen", (uintptr_t)&fdopen },
             { "fgetpos", (uintptr_t)&fgetpos },
-            { "fgets", (uintptr_t)&fgets },
             { "fileno", (uintptr_t)&fileno },
             { "fputc", (uintptr_t)&fputc },
             { "fputs", (uintptr_t)&fputs },
@@ -435,14 +453,12 @@ so_default_dynlib default_dynlib[] = {
             { "fsetpos", (uintptr_t)&fsetpos },
             { "fwide", (uintptr_t)&fwide },
             { "fwrite", (uintptr_t)&fwrite },
-            { "getc", (uintptr_t)&getc },
             { "getwc", (uintptr_t)&getwc },
             { "putc", (uintptr_t)&putc },
             { "putchar", (uintptr_t)&putchar },
             { "puts", (uintptr_t)&puts },
             { "putwc", (uintptr_t)&putwc },
             { "setvbuf", (uintptr_t)&setvbuf },
-            { "ungetc", (uintptr_t)&ungetc },
             { "ungetwc", (uintptr_t)&ungetwc },
         #endif
 
@@ -997,6 +1013,10 @@ so_default_dynlib default_dynlib[] = {
         { "strtol", (uintptr_t)&strtol },
         { "strtold", (uintptr_t)&strtold },
         { "strtoll", (uintptr_t)&strtoll },
+        { "strtoll_l", (uintptr_t)&strtoll_l_soloader },
+        { "strtoull_l", (uintptr_t)&strtoull_l_soloader },
+        { "strtold_l", (uintptr_t)&strtold_l_soloader },
+        { "readlink", (uintptr_t)&readlink_soloader },
         { "strtoul", (uintptr_t)&strtoul },
         { "strtoull", (uintptr_t)&strtoull },
         { "strtoumax", (uintptr_t)&strtoumax },

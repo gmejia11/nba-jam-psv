@@ -97,6 +97,8 @@ int64_t sceFiosFHReadSync(void *attr, int32_t fh, void *pBuf, int64_t length);
 int64_t sceFiosFHSeek(int32_t fh, int64_t offset, int32_t whence);
 int64_t sceFiosFHTell(int32_t fh);
 int sceFiosFHCloseSync(void *attr, int32_t fh);
+int64_t sceFiosFHGetSize(int32_t fh);
+int64_t sceFiosFHPreadSync(void *attr, int32_t fh, void *pBuf, int64_t length, int64_t offset);
 
 int fios_init(const char * path);
 

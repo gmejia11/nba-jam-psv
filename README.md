@@ -5,6 +5,8 @@ NBA Jam · PSVita Port
 <p align="center">
   <a href="#setup-instructions-for-players">How to install</a> •
   <a href="#controls">Controls</a> •
+  <a href="#whats-changed-in-this-fork">Changes</a> •
+  <a href="#building">Building</a> •
   <a href="#known-issues">Known issues</a> •
   <a href="#credits">Credits</a> •
   <a href="#license">License</a>
@@ -13,6 +15,12 @@ NBA Jam · PSVita Port
 Jam with your favorite stars from all 30 NBA teams in over-the-top, high-flying,
 2-on-2 arcade basketball just like you remember it – and like you’ve never seen
 before!
+
+> **This is a fork of [elliencode/nba-jam-psv][upstream]** focused on loading
+> times. Starting a match now takes **~10 seconds** (was ~2 minutes) and quitting
+> back to the main menu takes **~4 seconds** (was ~25–30 seconds with an app
+> relaunch). See [What's changed in this fork](#whats-changed-in-this-fork).
+> All credit for the original port goes to its author, **elliencode**.
 
 This repository contains a loader for **the Android release of NBA Jam v.4.00.80**,
 based on the [Android SO Loader by TheFloW][gtasa]. The loader provides
@@ -107,22 +115,105 @@ Controls
 The port features support for physical/gamepad controls. In-game help menu contains
 information and tutorials on using them.
 
+What's changed in this fork
+-----------------
+
+Measured on real PS Vita hardware with the same `data.psarc`:
+
+| | Original | This fork |
+|---|---|---|
+| Player select → match starts | ~2 minutes | **~10 seconds** |
+| Quit match → main menu | ~25–30 seconds (app relaunch) | **~4 seconds** |
+
+**Buffered PSARC reader** (`source/reimpl/io.c`)
+- Every `fread()` on a file inside `data.psarc` used to be a synchronous FIOS
+  request. Loading a match issues ~270,000 tiny reads (~75 bytes on average).
+  Each open file now has a 256 KB read-ahead buffer, so those reads are served
+  from RAM with only ~1,100 real FIOS requests. Large reads still go directly
+  to FIOS without an extra copy.
+- File sizes come from `sceFiosFHGetSize()` and reads use `sceFiosFHPreadSync()`.
+- Fixed stdio semantics for PSARC files: `fread()` returns the number of items
+  actually read, `feof()` and `fgetc()` work, and `fgets()`, `getc()` and
+  `ungetc()` are now supported instead of being routed to the wrong libc.
+
+**Shader cache**
+- vitaGL is built with `HAVE_SHADER_CACHE=1`, so GLSL shaders are translated
+  and compiled only once and then loaded from
+  `ux0:data/shader_cache/<TITLEID>/` on later boots and matches.
+
+**No more app relaunch when quitting to the main menu**
+- The original port intercepted `StateMachine::Clear()` and relaunched the
+  whole app behind a fake loading screen. With the other fixes in place, the
+  game's real `StateMachine::Clear()` works fine (tested with several matches
+  in a row), so returning to the menu no longer reloads everything.
+- If the relaunch workaround is still needed, it is used as before, but the
+  fake loading screen now ends as soon as the main menu has loaded
+  (`MainMenuState::MenuManagerLoadedMenu`) instead of always lasting 20 seconds.
+
+**Missing imports**
+- Added `posix_memalign` (newlib declares it but does not implement it),
+  `log2f`, `strtoll_l`, `strtoull_l`, `strtold_l` and `readlink`.
+
+**Build changes**
+- Uses upstream [vitaGL][vitagl] (the previous vitaGL submodule was not
+  publicly accessible). It is built with `SOFTFP_ABI=1 HAVE_GLSL_SUPPORT=1
+  NO_DEBUG=1 HAVE_SHADER_CACHE=1 NO_SPLASHSCREEN=1`.
+- Links `mpg123`, `mp3lame` and `opus`, which newer `libsndfile` requires.
+- Submodule URLs switched to HTTPS so the repo can be cloned without SSH keys.
+
+### Optional switch files
+
+Create an empty file with one of these names in
+`ux0:data/com.eamobile.nbajam_row_wf/` to change the behaviour. Nothing is
+needed for normal use.
+
+| File | Effect |
+|---|---|
+| `use_relaunch` | Go back to the original "relaunch the app" workaround when quitting to the menu |
+| `debug_log` | Write diagnostics to `psarc_io.log` (I/O statistics, blocked frames) and `relaunch_debug.log` |
+| `psarc_legacy` | Use the original unbuffered PSARC reader |
+
+Building
+-----------------
+
+This port **must** be built with the **softfp** flavour of VitaSDK, because the
+Android `.so` uses the softfp ABI. A regular (hardfp) VitaSDK fails at link time
+with `uses VFP register arguments` errors.
+
+```bash
+# 1. Install VitaSDK softfp into its own folder
+git clone https://github.com/vitasdk-softfp/vdpm
+cd vdpm
+export VITASDK=$HOME/vitasdk-softfp
+export PATH=$VITASDK/bin:$PATH
+./bootstrap-vitasdk.sh
+./install-all.sh
+
+# 2. Clone and build
+git clone --recurse-submodules https://github.com/gmejia11/nba-jam-psv
+cd nba-jam-psv
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j4
+```
+
+The resulting `com.eamobile.nbajam_row_wf.vpk` is in `build/`.
+
 Known issues
 -----------------
 
-* Loading times when you start a match from the main menu and when you quit from
-a match back to the main menu are quite slow (up to 1 minute). Unfortunately,
-nothing can be done about that. The game is heavy on disk IO and before switching
-to PSARC for data files and some extra optimizations, it took around 40 minutes
-to load a single level. How it is right now is the best it can be on this platform.
-* Multiplayer doesn't work. I do plan to take another look at it in the future.
+* The first boot and the first match after installing are slower, because
+  shaders are compiled and stored in the shader cache.
+* This port does not run in Vita3K: the emulator cannot allocate memory at the
+  fixed address the `.so` loader needs.
+* Multiplayer doesn't work.
 
 Credits
 ----------------
 
+- [elliencode][upstream] for the original NBA Jam PS Vita port this fork is based on.
 - [The FloW][flow] for the original .so loader.
 - [Rinnegatamante][rinne] for VitaGL.
-- [gl33ntwine][gl33ntwine] for SoLoBoP and teaching me everything I know about this.
+- [gl33ntwine][gl33ntwine] for SoLoBoP.
 
 License
 ----------------
@@ -148,11 +239,13 @@ the MIT license. See the [LICENSE](LICENSE) file for details.
 [trigr]: https://raw.githubusercontent.com/v-atamanenko/mc3-vita/master/extras/icons/trigger-right.svg "Right Trigger"
 
 [gtasa]: https://github.com/TheOfficialFloW/gtasa_vita
+[upstream]: https://github.com/elliencode/nba-jam-psv
+[vitagl]: https://github.com/Rinnegatamante/vitaGL
 [kubridge]: https://github.com/bythos14/kubridge/releases/
 [fdfix]: https://github.com/TheOfficialFloW/FdFix/releases/
 [unpack-on-phone]: https://stackoverflow.com/questions/11012976/how-do-i-get-the-apk-of-an-installed-app-without-root-access
 [shrkbrd]: https://github.com/Rinnegatamante/ShaRKBR33D/releases/latest
-[latest-release]: https://github.com/elliencode/nba-jam-psv/releases/latest
+[latest-release]: https://github.com/gmejia11/nba-jam-psv/releases/latest
 
 [flow]: https://github.com/TheOfficialFloW/
 [rinne]: https://github.com/Rinnegatamante/

@@ -22,6 +22,10 @@
 #include <psp2/kernel/sysmem.h>
 #include <psp2/io/stat.h>
 
+// Upstream vitaGL references this vitashark function, which is missing from
+// the vitashark shipped with VitaSDK softfp. It is never used by this port.
+void shark_set_shader_association_path(const char *path) { (void)path; }
+
 // Helpers for our handling of shaders
 GLboolean skip_next_compile = GL_FALSE;
 char next_shader_fname[256];

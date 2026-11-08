@@ -109,16 +109,22 @@ add_executable(${CMAKE_PROJECT_NAME}
 add_subdirectory(lib/libc_bridge)
 add_dependencies(${CMAKE_PROJECT_NAME} SceLibcBridge)
 
-set(SOFTFP_ABI ON CACHE INTERNAL "Compile the library in soft floating point compatibility mode." FORCE)
-set(HAVE_GLSL_SUPPORT 1 CACHE INTERNAL "0 = None, 1 = Enable experimental GLSL to CG auto translation for shader sources with preprocessor pass (Recommended), 2 = Without preprocessor pass." FORCE)
+# vitaGL (upstream Rinnegatamante/vitaGL, built with its own Makefile).
+# HAVE_SHADER_CACHE=1 stores compiled shaders in ux0:data/shader_cache/<TITLEID>
+# so GLSL->CG translation + shacccg compilation only happens on the first boot.
+set(VITAGL_DIR ${CMAKE_SOURCE_DIR}/lib/vitagl)
+set(VITAGL_FLAGS SOFTFP_ABI=1 HAVE_GLSL_SUPPORT=1 NO_DEBUG=1 HAVE_SHADER_CACHE=1 NO_SPLASHSCREEN=1)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(LOG_ERRORS 1 CACHE INTERNAL "0 = No logging, 1 = Errors will be logged with sceClibPrintf, 2 = Errors will be logged to ux0:data/vitaGL.log." FORCE)
+  list(APPEND VITAGL_FLAGS LOG_ERRORS=1)
 endif()
-set(NO_DEBUG 1 CACHE INTERNAL "Disable most of the error handling features (Faster CPU code execution but code may be non compliant to all OpenGL standards)." FORCE)
-add_subdirectory(lib/vitaGL)
+add_custom_command(OUTPUT ${VITAGL_DIR}/libvitaGL.a
+                   COMMAND make -C ${VITAGL_DIR} ${VITAGL_FLAGS} -j4
+                   COMMENT "Building vitaGL")
+add_custom_target(vitaGL DEPENDS ${VITAGL_DIR}/libvitaGL.a)
 add_dependencies(${CMAKE_PROJECT_NAME} vitaGL)
 
 target_include_directories(${CMAKE_PROJECT_NAME} SYSTEM
+                           BEFORE PUBLIC ${VITAGL_DIR}/source
                            PUBLIC ${CMAKE_SOURCE_DIR}/lib
                            )
 
@@ -126,19 +132,26 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PUBLIC ${CMAKE_SOURCE_DIR}/source
                            )
 
+# Upstream vitaGL ships its own EGL implementation; the loader's
+# source/reimpl/egl.c must take precedence (it is linked first).
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -Wl,--allow-multiple-definition)
+
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       -Wl,--whole-archive pthread -Wl,--no-whole-archive
                       physfs
                       OpenSLES
                       openal
                       sndfile
+                      mpg123
+                      mp3lame
+                      opus
                       vorbis
                       ogg
                       vorbisenc
                       vorbisfile
                       FLAC
                       stdc++
-                      ${CMAKE_BINARY_DIR}/lib/vitaGL/libvitaGL.a
+                      ${VITAGL_DIR}/libvitaGL.a
                       vitashark
                       SceShaccCgExt
                       taihen_stub
