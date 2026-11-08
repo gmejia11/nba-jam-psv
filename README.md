@@ -20,7 +20,8 @@ before!
 > times. Starting a match now takes **~10 seconds** (was ~2 minutes) and quitting
 > back to the main menu takes **~4 seconds** (was ~25–30 seconds with an app
 > relaunch). See [What's changed in this fork](#whats-changed-in-this-fork).
-> All credit for the original port goes to its author, **elliencode**.
+> Fork maintained by **DominicanNY**. All credit for the original port goes to
+> its author, **elliencode**.
 
 This repository contains a loader for **the Android release of NBA Jam v.4.00.80**,
 based on the [Android SO Loader by TheFloW][gtasa]. The loader provides
